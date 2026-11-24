@@ -43,6 +43,34 @@ Database states and configuration (03), integrity (05), waits (09), statistics (
 
 For each HC ID, record the actual script path, supported versions, permission and overhead tests, normal/exception/unknown cases, structured output mapping, and central reporting verification. Completion requires evidence, not merely a module assignment. Existing standalone verification does not establish AG/FCI or central collection compatibility.
 
+## Technical References
+
+### Uday Arumilli - SQL Server Health Check
+
+Original T-SQL Script:
+https://udayarumilli.com/sql-server-health-check/
+
+HTML Health Check Report:
+https://udayarumilli.com/sql-server-health-check-html-report/
+
+### Implementation Principles
+
+- Preserve all applicable health-check capabilities.
+- Use modern SQL Server DMVs.
+- Validate version-specific counter availability.
+- Calculate rate-based metrics correctly.
+- Support configurable assessment thresholds.
+- Support standalone, AG and FCI environments.
+- Distinguish operational incidents from optimization findings.
+- Avoid unnecessary production resource consumption.
+- Support centralized historical data collection.
+- Generate exception-based reports.
+- Validate each capability before module closure.
+
+The original script is a technical reference only.
+Our framework will use independently developed and
+validated assessment implementations.
+
 Use bounded read-only queries, avoid application table scans for routine sizing, use counter deltas with reset detection where applicable, and do not deploy procedures, jobs or email infrastructure without separate approval. No fixed universal PLE or CPU threshold; use validated policies and trends. Do not collect full SQL text or credentials by default.
 
 This checklist supplements Framework-Design.md; it does not change the design baseline. Initial statuses are provisional based on the development session, not an independent execution audit. The reference article's published scope was reviewed; its downloadable procedure was not audited.
