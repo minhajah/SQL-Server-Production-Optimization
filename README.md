@@ -24,7 +24,7 @@ Collect -> Analyze -> Recommend -> Implement
 
 | Module | Description | Status |
 |---|---|---|
-| 01 | Server Inventory & Discovery | In Progress |
+| 01 | [Server Inventory & Discovery](01-Server-Inventory/) | Completed - Standalone Verified |
 | 02 | Server Configuration | Planned |
 | 03 | Database Configuration | Planned |
 | 04 | Backup and Recovery | Planned |
