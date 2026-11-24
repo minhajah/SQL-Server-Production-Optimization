@@ -66,6 +66,15 @@ Collect -> Analyze -> Recommend -> Implement
 - Consolidated Enterprise Health Report
 - Production Improvement Report
 
+## Framework Design
+
+The architecture, development standards, assessment
+methodology and reporting templates are defined in:
+
+[Framework Design v1.0](Framework-Design.md)
+
+All modules must follow the approved framework design.
+
 ## Related Repository
 
 [SQL Server DBA Toolkit](https://github.com/minhajah/SQL-Server-DBA-Toolkit)
