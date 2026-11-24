@@ -2,77 +2,92 @@
 
 ## Objective
 
-Collect essential information from existing production
-SQL Server instances before performing configuration
-changes, performance tuning or maintenance improvements.
-
-This module establishes the initial inventory baseline
-and provides input for daily and weekly health reports.
+Establish an inventory baseline for existing production
+SQL Server instances and provide the foundation for
+automated daily and weekly health reporting.
 
 ## Scripts
 
 | Script | Description |
 |---|---|
-| 01-Server-Inventory.sql | SQL Server instance, version, CPU, RAM and uptime |
-| 02-Database-Inventory.sql | Database configuration, status and allocated sizes |
-| 03-Storage-Inventory.sql | Storage capacity and database file configuration |
+| 01-Server-Inventory.sql | Instance, version, CPU, RAM and uptime |
+| 02-Database-Inventory.sql | Database configuration and allocated sizes |
+| 03-Storage-Inventory.sql | Disk capacity and database file configuration |
 | 04-HA-DR-Inventory.sql | Availability Groups, replicas and listeners |
-| 05-SQL-Agent-Inventory.sql | Jobs, schedules, execution status and failures |
+| 05-SQL-Agent-Inventory.sql | Jobs, schedules and execution history |
 | 06-Server-Services.sql | SQL Server services and startup configuration |
+| 07-Consolidated-Inventory-Report.sql | Single-row inventory summary |
+| 08-HTML-Inventory-Report.sql | Formatted HTML inventory report |
 
 ## Requirements
 
-- Microsoft SQL Server 2016 SP1 or later
+- SQL Server 2016 SP1 or later
 - SQL Server Management Studio
-- Appropriate server-level DMV permissions
+- Appropriate DMV permissions
 - Access to SQL Agent metadata in msdb
 
 ## Execution Order
 
-Execute scripts 01 through 06 in sequence.
+Execute scripts 01 through 08 sequentially.
+
+Scripts 01 through 06 provide detailed inventory.
+Script 07 provides a consolidated summary.
+Script 08 generates a formatted HTML report.
 
 ## Production Safety
 
-- All assessment scripts are read-only.
-- No permanent database objects are created.
-- No SQL Server configuration changes are performed.
-- No services are restarted.
-- No database maintenance operations are initiated.
+- Classification: Read-only, low expected impact
+- Permanent database objects: None
+- Configuration changes: None
+- Service restarts: None
+- Email delivery: None
+- Maintenance window: Normally not required
+- Rollback: Not applicable
 
-## Assessment Areas
-
-- SQL Server version and patching level
-- CPU and memory allocation
-- Database configuration
-- Storage capacity
-- Database file growth settings
-- High availability configuration
-- SQL Agent jobs and maintenance
-- SQL Server service configuration
+Review resource usage during initial execution.
 
 ## Reporting Integration
 
-The information collected in this module contributes to:
+The HTML inventory report includes:
 
-- Server Inventory Report
-- Daily SQL Server Health Report
-- Weekly SQL Server Health Report
-- Database Capacity Report
-- Production Improvement Tracker
+1. Server information
+2. Database information
+3. Storage information
+4. High availability configuration
+5. SQL Agent information
+6. SQL Server services
+
+## How to View the HTML Report
+
+1. Execute 08-HTML-Inventory-Report.sql in SSMS.
+2. Copy the complete HTMLReport output.
+3. Save the content as an HTML file using UTF-8.
+4. Open the file in a web browser.
 
 ## Validation Status
 
-- Standalone SQL Server: Verified
-- Always On Availability Groups: Pending full validation
-- Failover Cluster Instance: Pending validation
+| Environment | Status |
+|---|---|
+| Standalone SQL Server | Verified |
+| Always On Availability Groups | Pending validation |
+| Failover Cluster Instance | Pending validation |
+| Consolidated Inventory Report | Verified |
+| HTML Report Generation | Verified |
+| Automated Email Delivery | Planned |
 
 ## Limitations
 
 - Storage inventory covers database-associated volumes.
-- Service inventory covers supported SQL Server services.
-- AG runtime visibility depends on the replica role.
-- Historical information requires scheduled collection.
-- SQL Agent history depends on retention settings.
+- Service inventory does not cover all Windows services.
+- AG health assessment requires further validation.
+- SQL Agent history depends on retention and permissions.
+- Historical performance collection is not yet implemented.
+- Inventory status does not represent complete server health.
+- HTML email client compatibility requires validation.
+
+## Module Status
+
+Completed for standalone pilot implementation.
 
 ## Next Module
 
