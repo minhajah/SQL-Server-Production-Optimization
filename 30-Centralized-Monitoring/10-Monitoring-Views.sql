@@ -63,7 +63,12 @@ SET @ActualServer =
 IF ISNULL(@AllowDeployment, 0) <> 1
     THROW 50001, 'Deployment disabled.', 1;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
     THROW 50002, 'Approved server must be configured.', 1;
 
@@ -94,6 +99,10 @@ IF DATABASEPROPERTYEX
 
 IF @@TRANCOUNT <> 0
     THROW 50007, 'Existing transaction detected.', 1;
+IF (@@OPTIONS & 2) = 2
+    THROW 50013,
+        'Implicit transactions must be disabled.',
+        1;
 
 ------------------------------------------------------------
 -- SECTION 3: Repository Validation
@@ -795,10 +804,24 @@ BEGIN TRY
             )
 
                 THEN ''COLLECTION ISSUES''
+----------------------------------------------------
+-- Prevent previous collection observations
+-- from appearing as current transient resources
+----------------------------------------------------
 
+WHEN C.CollectorCode IN (''COL-09'', ''COL-15'')
+
+ AND H.LastRunStatus = ''SUCCESS''
+
+ AND L.CollectionRunID <> H.LastCollectionRunID
+
+    THEN ''NOT IN LATEST SNAPSHOT''
             WHEN L.CollectionStatus <> ''SUCCESS''
 
                 THEN L.CollectionStatus
+        WHEN H.CollectionHealthStatus = ''STALE''
+
+    THEN ''STALE''
 
             WHEN L.CaptureDateUTC >
                  DATEADD
