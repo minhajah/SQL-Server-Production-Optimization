@@ -15,6 +15,10 @@ GO
 
 SET NOCOUNT ON;
 
+-- Limit lock waits and favor application transactions in deadlocks.
+SET LOCK_TIMEOUT 5000;
+SET DEADLOCK_PRIORITY LOW;
+
 ------------------------------------------------------------
 -- SECTION 1: Collection Variables
 ------------------------------------------------------------
@@ -72,6 +76,12 @@ DECLARE @LogFiles TABLE
     PercentGrowthCount INT,
     MaximumSizeConfiguredCount INT,
     MaximumSizeReachedCount INT
+);
+
+DECLARE @LogStatsErrors TABLE
+(
+    DatabaseID INT PRIMARY KEY,
+    ErrorMessage NVARCHAR(2048)
 );
 
 DECLARE @LogStats TABLE
@@ -444,33 +454,35 @@ END CATCH;
 
 BEGIN TRY
 
-    INSERT INTO @LogStats
-    SELECT
-        D.DatabaseID,
-        L.total_vlf_count,
-        L.active_vlf_count,
+    DECLARE @LogStatsDatabaseID INT;
 
-        CONVERT(DECIMAL(28,4),
-            L.active_log_size_mb),
+    SELECT @LogStatsDatabaseID = MIN(DatabaseID)
+    FROM @Databases WHERE DatabaseState = 0;
 
-        CONVERT(DECIMAL(28,4),
-            L.log_since_last_log_backup_mb),
+    WHILE @LogStatsDatabaseID IS NOT NULL
+    BEGIN
+        BEGIN TRY
+            INSERT INTO @LogStats
+            SELECT
+                @LogStatsDatabaseID,
+                L.total_vlf_count,
+                L.active_vlf_count,
+                CONVERT(DECIMAL(28,4), L.active_log_size_mb),
+                CONVERT(DECIMAL(28,4), L.log_since_last_log_backup_mb),
+                CONVERT(DECIMAL(28,4), L.log_since_last_checkpoint_mb),
+                L.log_truncation_holdup_reason
+            FROM sys.dm_db_log_stats(@LogStatsDatabaseID) AS L;
+        END TRY
+        BEGIN CATCH
+            INSERT INTO @LogStatsErrors (DatabaseID, ErrorMessage)
+            VALUES (@LogStatsDatabaseID, ERROR_MESSAGE());
+        END CATCH;
 
-        CONVERT(DECIMAL(28,4),
-            L.log_since_last_checkpoint_mb),
-
-        L.log_truncation_holdup_reason
-
-    FROM @Databases AS D
-
-    CROSS APPLY sys.dm_db_log_stats
-    (
-        D.DatabaseID
-    ) AS L
-
-    WHERE D.DatabaseState = 0
-
-    OPTION (RECOMPILE);
+        SELECT @LogStatsDatabaseID = MIN(DatabaseID)
+        FROM @Databases
+        WHERE DatabaseState = 0
+          AND DatabaseID > @LogStatsDatabaseID;
+    END;
 
     --------------------------------------------------------
     -- Transaction log statistics metrics
@@ -492,6 +504,9 @@ BEGIN TRY
              AND D.RecoveryModel = 3
                 THEN 'NOT APPLICABLE'
 
+            WHEN E.DatabaseID IS NOT NULL
+                THEN 'FAILED'
+
             WHEN M.MetricValue IS NULL
                 THEN 'UNKNOWN'
 
@@ -508,6 +523,9 @@ BEGIN TRY
             WHEN D.DatabaseState <> 0
                 THEN 'Database is not ONLINE.'
 
+            WHEN E.DatabaseID IS NOT NULL
+                THEN E.ErrorMessage
+
             WHEN M.MetricValue IS NULL
                 THEN 'Log statistic unavailable for database or replica.'
 
@@ -519,6 +537,9 @@ BEGIN TRY
 
     LEFT JOIN @LogStats AS L
         ON D.DatabaseID = L.DatabaseID
+
+    LEFT JOIN @LogStatsErrors AS E
+        ON D.DatabaseID = E.DatabaseID
 
     CROSS APPLY
     (

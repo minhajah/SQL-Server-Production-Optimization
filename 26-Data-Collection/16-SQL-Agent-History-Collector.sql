@@ -15,6 +15,10 @@ GO
 
 SET NOCOUNT ON;
 
+-- Limit lock waits and favor application transactions in deadlocks.
+SET LOCK_TIMEOUT 5000;
+SET DEADLOCK_PRIORITY LOW;
+
 ------------------------------------------------------------
 -- SECTION 1: Collection Variables
 ------------------------------------------------------------
