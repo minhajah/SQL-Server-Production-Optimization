@@ -41,9 +41,15 @@ Development only. Do not run on production until the validation checklist and ap
 - Limit concurrency and event/history reads; preserve existing monitoring jobs.
 - Never treat missing or stale observations as healthy.
 
+## Safety hardening and pilot scope
+
+The prepared 16-file replacement adds LOCK_TIMEOUT 5000 and DEADLOCK_PRIORITY LOW; collector 10 isolates advanced log-statistics errors per database. These settings do not replace command timeouts. Use dedicated or reset connections. COL-11, COL-12 and COL-16 remain disabled until incremental coverage and replay tests pass. All other collectors are test candidates only.
+
+Documentation baseline: uploaded repository snapshot (2), plus subsequently prepared replacement scripts. GitHub commit equivalence must be verified from a fresh snapshot. No new SQL Server execution or compilation evidence was obtained during consolidation.
+
 ## Limitations
 
-Initial validation target is SQL Server 2019, followed by 2017 and 2022 where features permit. AG, FCI, restricted permissions, PPDM, counter resets and history rollover require dedicated validation. SQL volume collection cannot cover all host volumes. Deadlock and error-log collectors do not guarantee complete event coverage. Wait statistics require specialized storage and aggregation.
+Initial supported target is SQL Server 2019+; test SQL Server 2022 separately. Earlier versions are outside the current deployment scope. AG, FCI, restricted permissions, PPDM, counter resets and history rollover require dedicated validation. SQL volume collection cannot cover all host volumes. Deadlock and error-log collectors do not guarantee complete event coverage. Wait statistics require specialized storage and aggregation.
 
 ## Validation Status
 

@@ -61,3 +61,7 @@ IDs extracted from the uploaded SQL source, including conditional diagnostic IDs
 | 16 | Durable checkpoint, deduplication, reconciliation and atomic central commit; local timestamps need timezone mapping. |
 
 Use stable inventory identities and restart generations. Store event and high-volume time series separately from generic metrics. Approve retention, storage sizing and thresholds before pilot.
+
+## Baseline integration notes
+
+Catalog registration is provided by Module 30/11. Literal metric ID matching is not proof of executable metadata compatibility. Validate every output branch, including error rows, alternate resource types and units (TMP-012 MB or Percent), before activation. Preserve the 12-column contract. For cumulative counters supply a valid epoch; for events use stable generation identifiers. The runner must handle GO, dedicated sessions, timeouts and atomic repository transactions. Incremental collectors 11, 12 and 16 remain disabled pending integration.
