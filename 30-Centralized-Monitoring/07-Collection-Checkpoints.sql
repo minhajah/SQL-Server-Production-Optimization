@@ -468,7 +468,6 @@ BEGIN TRY
         ----------------------------------------------------
 
         SELECT
-        SELECT
     @RunStatus = RunStatus,
 
     @IngestedRowsReturned = RowsReturned,
