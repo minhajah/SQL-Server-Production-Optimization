@@ -52,7 +52,8 @@ SET @ActualServer =
 IF ISNULL(@AllowDeployment, 0) <> 1
     THROW 50001, 'Deployment disabled.', 1;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF(LTRIM(RTRIM(@ApprovedMonitoringServer)), N'') IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
     THROW 50002, 'Approved server must be configured.', 1;
 
@@ -83,6 +84,9 @@ IF DATABASEPROPERTYEX
 
 IF @@TRANCOUNT <> 0
     THROW 50007, 'Existing transaction detected.', 1;
+
+IF (@@OPTIONS & 2) = 2
+    THROW 50012, 'Implicit transactions must be disabled.', 1;
 
 ------------------------------------------------------------
 -- SECTION 3: Repository Validation
@@ -768,6 +772,11 @@ BEGIN TRY
                 ''Retention requires an independent transaction.'',
                 1;
 
+        IF (@@OPTIONS & 2) = 2
+            THROW 51310,
+                ''Implicit transactions must be disabled before retention.'',
+                1;
+
         IF NOT EXISTS
         (
             SELECT 1
@@ -1058,6 +1067,7 @@ BEGIN TRY
                 MetricDefinitionID INT NOT NULL,
                 MetricUnit VARCHAR(30) NOT NULL,
                 AggregationType VARCHAR(20) NOT NULL,
+                VerifiedSampleCount BIGINT NOT NULL,
 
                 PRIMARY KEY
                 (
@@ -1201,7 +1211,8 @@ BEGIN TRY
                     H.ResourceID,
                     H.MetricDefinitionID,
                     H.MetricUnit,
-                    H.AggregationType
+                    H.AggregationType,
+                    H.SampleCount
 
                 FROM HistoricalGroups AS H
 
@@ -1343,43 +1354,7 @@ BEGIN TRY
                                       ''GAUGE''
                               )
 
-                              OR EXISTS
-                              (
-                                  SELECT 1
 
-                                  FROM #VerifiedHours AS V
-
-                                  WHERE V.InstanceID =
-                                        S.InstanceID
-
-                                    AND V.ResourceID =
-                                        S.ResourceID
-
-                                    AND V.MetricDefinitionID =
-                                        S.MetricDefinitionID
-
-                                    AND V.MetricUnit =
-                                        S.MetricUnit
-
-                                    AND V.AggregationType =
-                                        CASE
-                                            WHEN S.SampleKind =
-                                                ''DELTA''
-                                                THEN ''DELTA''
-                                            ELSE ''GAUGE''
-                                        END
-
-                                    AND S.CaptureDateUTC >=
-                                        V.HourStartUTC
-
-                                    AND S.CaptureDateUTC <
-                                        DATEADD
-                                        (
-                                            HOUR,
-                                            1,
-                                            V.HourStartUTC
-                                        )
-                              )
                           )
 
                         ORDER BY
@@ -1398,6 +1373,65 @@ BEGIN TRY
                     OPTION (MAXDOP 1);
 
                     SET @RowsDeleted = @@ROWCOUNT;
+
+                    -- Delete a complete verified metric-hour atomically.
+                    -- Never split a verified aggregate group across commits.
+                    IF @RowsDeleted = 0 AND @RequireAggregation = 1
+                    BEGIN
+                        DECLARE @VerifiedSampleCount BIGINT = NULL;
+                        SELECT TOP (1) @VerifiedSampleCount = VerifiedSampleCount
+                        FROM #VerifiedHours
+                        ORDER BY HourStartUTC, InstanceID, ResourceID,
+                                 MetricDefinitionID, MetricUnit, AggregationType;
+
+                        ;WITH NextVerifiedHour AS
+                        (
+                            SELECT TOP (1) *
+                            FROM #VerifiedHours
+                            ORDER BY HourStartUTC, InstanceID, ResourceID,
+                                     MetricDefinitionID, MetricUnit, AggregationType
+                        )
+                        DELETE S
+                        FROM dbo.MetricSamples AS S
+                        INNER JOIN dbo.MetricDefinitions AS D
+                            ON D.MetricDefinitionID = S.MetricDefinitionID
+                        INNER JOIN NextVerifiedHour AS V
+                            ON V.InstanceID = S.InstanceID
+                           AND V.ResourceID = S.ResourceID
+                           AND V.MetricDefinitionID = S.MetricDefinitionID
+                           AND V.MetricUnit = S.MetricUnit
+                           AND S.CaptureDateUTC >= V.HourStartUTC
+                           AND S.CaptureDateUTC < DATEADD(HOUR, 1, V.HourStartUTC)
+                        WHERE S.CollectionStatus = ''SUCCESS''
+                          AND S.MetricValue IS NOT NULL
+                          AND S.CaptureDateUTC < @RawCutoff
+                          AND ((V.AggregationType = ''DELTA'' AND S.SampleKind = ''DELTA'')
+                            OR (V.AggregationType = ''GAUGE'' AND S.SampleKind = ''RAW''
+                                AND D.MetricBehavior = ''GAUGE''))
+                          AND NOT EXISTS
+                          (
+                              SELECT 1 FROM dbo.CollectionRuns AS R
+                              WHERE R.CollectionRunID = S.CollectionRunID
+                                AND R.RunStatus = ''RUNNING''
+                          )
+                        OPTION (MAXDOP 1);
+
+                        SET @RowsDeleted = @@ROWCOUNT;
+
+                        IF @VerifiedSampleCount IS NOT NULL
+                           AND @RowsDeleted <> @VerifiedSampleCount
+                            THROW 51311, ''Verified hourly group changed during retention.'', 1;
+
+                        -- Remove the staged group in the same transaction.
+                        ;WITH NextVerifiedHour AS
+                        (
+                            SELECT TOP (1) *
+                            FROM #VerifiedHours
+                            ORDER BY HourStartUTC, InstanceID, ResourceID,
+                                     MetricDefinitionID, MetricUnit, AggregationType
+                        )
+                        DELETE FROM NextVerifiedHour;
+                    END;
 
                     SET @RawDeleted += @RowsDeleted;
 
@@ -1815,7 +1849,9 @@ BEGIN TRY
                 -- Continue to next category when exhausted
                 ------------------------------------------------
 
-                IF @RowsDeleted < @BatchSize
+                IF (@Phase = 1 AND @RowsDeleted = 0
+                    AND NOT EXISTS (SELECT 1 FROM #VerifiedHours))
+                OR (@Phase <> 1 AND @RowsDeleted < @BatchSize)
                     SET @Phase += 1;
 
                 IF @RowsDeleted > 0
