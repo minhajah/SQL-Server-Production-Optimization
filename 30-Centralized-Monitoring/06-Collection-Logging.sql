@@ -53,7 +53,12 @@ BEGIN
         1;
 END;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
 BEGIN
     THROW 50002,
@@ -200,12 +205,14 @@ BEGIN TRY
 
         SET @CollectionRunID = NULL;
 
-        IF @RunToken IS NULL
-        BEGIN
-            THROW 50101,
-                ''A unique run token is required.'',
-                1;
-        END;
+       IF @RunToken IS NULL
+OR ISNULL(@InstanceID, 0) < 1
+OR ISNULL(@CollectorID, 0) < 1
+BEGIN
+    THROW 50101,
+        ''Valid instance ID, collector ID and run token are required.'',
+        1;
+END;
 
         IF @@TRANCOUNT <> 0
         BEGIN
@@ -566,6 +573,8 @@ BEGIN TRY
             @StartDateUTC DATETIME2(3),
             @EndDateUTC DATETIME2(3),
             @ExistingStatus VARCHAR(20),
+            @ExistingRowsReturned BIGINT,
+            @ExistingRowsStored BIGINT,
             @IntervalSeconds INT,
             @NextDelaySeconds INT,
             @ConsecutiveFailures INT,
@@ -626,7 +635,9 @@ BEGIN TRY
                 @InstanceID = InstanceID,
                 @CollectorID = CollectorID,
                 @StartDateUTC = StartDateUTC,
-                @ExistingStatus = RunStatus
+                @ExistingStatus = RunStatus,
+                @ExistingRowsReturned = RowsReturned,
+                @ExistingRowsStored = RowsStored
 
             FROM dbo.CollectionRuns
                 WITH (UPDLOCK, HOLDLOCK)
@@ -662,7 +673,49 @@ BEGIN TRY
                 RETURN;
 
             END;
+------------------------------------------------
+-- Validate successful ingestion before completion
+------------------------------------------------
 
+IF @RunStatus IN (''SUCCESS'', ''PARTIAL'')
+BEGIN
+
+    IF @StartedTransaction = 1
+    BEGIN
+        THROW 50208,
+            ''Successful or partial completion requires an ingestion transaction.'',
+            1;
+    END;
+
+    IF ISNULL(@ExistingRowsReturned, 0) = 0
+    OR @RowsReturned <> @ExistingRowsReturned
+    OR @RowsStored <> @ExistingRowsStored
+    BEGIN
+        THROW 50209,
+            ''Collection completion counts do not match ingested data.'',
+            1;
+    END;
+
+END;
+
+IF @RunStatus IN
+(
+    ''FAILED'',
+    ''TIMEOUT'',
+    ''SKIPPED'',
+    ''CANCELLED''
+)
+AND
+(
+    @RowsStored <> 0
+    OR @ExistingRowsReturned <> 0
+    OR @ExistingRowsStored <> 0
+)
+BEGIN
+    THROW 50210,
+        ''Roll back ingestion before recording unsuccessful execution.'',
+        1;
+END;
             SET @EndDateUTC = SYSUTCDATETIME();
 
             IF @EndDateUTC < @StartDateUTC
@@ -998,7 +1051,25 @@ BEGIN TRY
                     ''Unable to acquire scheduling lock.'',
                     1;
             END;
+------------------------------------------------
+-- Revalidate monitoring status after acquiring lock
+------------------------------------------------
 
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM dbo.MonitoringSettings
+        WITH (UPDLOCK, HOLDLOCK)
+    WHERE SettingKey = ''MonitoringEnabled''
+      AND SettingValue = N''0''
+)
+BEGIN
+    THROW 50306,
+        ''Monitoring must remain disabled during recovery.'',
+        1;
+END;
+
+SET @CurrentUTC = SYSUTCDATETIME();
             ------------------------------------------------
             -- Mark confirmed abandoned executions
             ------------------------------------------------
