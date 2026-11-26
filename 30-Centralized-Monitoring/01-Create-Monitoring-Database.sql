@@ -61,8 +61,8 @@ SET @ProductMajorVersion =
 -- SECTION 2: Production Safety Validation
 ------------------------------------------------------------
 
-IF @AllowDeployment <> 1
-BEGIN
+IF ISNULL(@AllowDeployment, 0) <> 1
+    BEGIN
 
     THROW 50001,
         'Deployment disabled. Review and approve deployment parameters.',
@@ -70,7 +70,12 @@ BEGIN
 
 END;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
 BEGIN
 
@@ -97,6 +102,33 @@ BEGIN
         'SQL Server 2019 or later is required.',
         1;
 
+END;
+IF ISNULL(@DatabaseName, N'') <> N'DBA_Monitoring'
+BEGIN
+    THROW 50006,
+        'Invalid monitoring database name.',
+        1;
+END;
+
+IF DB_NAME() <> N'master'
+BEGIN
+    THROW 50007,
+        'Database creation must execute in master.',
+        1;
+END;
+
+IF @@TRANCOUNT <> 0
+BEGIN
+    THROW 50008,
+        'Execute outside an existing transaction.',
+        1;
+END;
+
+IF (@@OPTIONS & 2) = 2
+BEGIN
+    THROW 50009,
+        'Implicit transactions must be disabled.',
+        1;
 END;
 
 ------------------------------------------------------------
