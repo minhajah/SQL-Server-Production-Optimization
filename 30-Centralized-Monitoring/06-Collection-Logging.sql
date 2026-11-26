@@ -114,6 +114,11 @@ BEGIN
         1;
 END;
 
+IF (@@OPTIONS & 2) = 2
+BEGIN
+    THROW 50012, 'Implicit transactions must be disabled.', 1;
+END;
+
 ------------------------------------------------------------
 -- SECTION 3: Repository Validation
 ------------------------------------------------------------
@@ -123,6 +128,7 @@ OR OBJECT_ID('dbo.Collectors', 'U') IS NULL
 OR OBJECT_ID('dbo.InstanceCollectors', 'U') IS NULL
 OR OBJECT_ID('dbo.CollectionRuns', 'U') IS NULL
 OR OBJECT_ID('dbo.MonitoringSettings', 'U') IS NULL
+OR OBJECT_ID('dbo.CollectionCheckpoints', 'U') IS NULL
 OR OBJECT_ID('dbo.SchemaVersion', 'U') IS NULL
 BEGIN
     THROW 50008,
@@ -218,6 +224,13 @@ END;
         BEGIN
             THROW 50102,
                 ''Start procedure requires an independent transaction.'',
+                1;
+        END;
+
+        IF (@@OPTIONS & 2) = 2
+        BEGIN
+            THROW 50114,
+                ''Implicit transactions must be disabled.'',
                 1;
         END;
 
@@ -612,6 +625,13 @@ END;
                 1;
         END;
 
+        IF (@@OPTIONS & 2) = 2
+        BEGIN
+            THROW 50211,
+                ''Implicit transactions must be disabled.'',
+                1;
+        END;
+
         IF XACT_STATE() = -1
         BEGIN
             THROW 50203,
@@ -659,6 +679,14 @@ END;
                 BEGIN
                     THROW 50205,
                         ''Collection already finalized with a different status.'',
+                        1;
+                END;
+
+                IF @ExistingRowsReturned <> @RowsReturned
+                OR @ExistingRowsStored <> @RowsStored
+                BEGIN
+                    THROW 50212,
+                        ''Collection already finalized with different row counts.'',
                         1;
                 END;
 
@@ -716,6 +744,22 @@ BEGIN
         ''Roll back ingestion before recording unsuccessful execution.'',
         1;
 END;
+            -- A partial collection must not commit an advanced checkpoint.
+            IF @RunStatus = ''PARTIAL''
+            AND EXISTS
+            (
+                SELECT 1
+                FROM dbo.CollectionCheckpoints
+                WHERE InstanceID = @InstanceID
+                  AND CollectorID = @CollectorID
+                  AND LastCollectionRunID = @CollectionRunID
+            )
+            BEGIN
+                THROW 50213,
+                    ''Partial completion cannot advance a checkpoint. Roll back and retry without saving a checkpoint.'',
+                    1;
+            END;
+
             SET @EndDateUTC = SYSUTCDATETIME();
 
             IF @EndDateUTC < @StartDateUTC
@@ -1032,6 +1076,13 @@ END;
         BEGIN
             THROW 50304,
                 ''Recovery requires an independent transaction.'',
+                1;
+        END;
+
+        IF (@@OPTIONS & 2) = 2
+        BEGIN
+            THROW 50307,
+                ''Implicit transactions must be disabled.'',
                 1;
         END;
 
