@@ -100,7 +100,7 @@ IF DATABASEPROPERTYEX
 IF @@TRANCOUNT <> 0
     THROW 50007, 'Existing transaction detected.', 1;
 IF (@@OPTIONS & 2) = 2
-    THROW 50013,
+    THROW 50014,
         'Implicit transactions must be disabled.',
         1;
 
@@ -804,24 +804,24 @@ BEGIN TRY
             )
 
                 THEN ''COLLECTION ISSUES''
-----------------------------------------------------
--- Prevent previous collection observations
--- from appearing as current transient resources
-----------------------------------------------------
+            WHEN H.CollectionHealthStatus = ''STALE''
+                THEN ''STALE''
 
-WHEN C.CollectorCode IN (''COL-09'', ''COL-15'')
+            WHEN C.CollectorCode IN (''COL-09'', ''COL-15'')
+             AND R.ResourceType IN
+                 (''SessionRequest'', ''BlockingSession'', ''Session'')
+             AND H.LastRunStatus = ''RUNNING''
+                THEN ''SNAPSHOT IN PROGRESS''
 
- AND H.LastRunStatus = ''SUCCESS''
+            WHEN C.CollectorCode IN (''COL-09'', ''COL-15'')
+             AND R.ResourceType IN
+                 (''SessionRequest'', ''BlockingSession'', ''Session'')
+             AND H.LastRunStatus = ''SUCCESS''
+             AND L.CollectionRunID <> H.LastCollectionRunID
+                THEN ''NOT IN LATEST SNAPSHOT''
 
- AND L.CollectionRunID <> H.LastCollectionRunID
-
-    THEN ''NOT IN LATEST SNAPSHOT''
             WHEN L.CollectionStatus <> ''SUCCESS''
-
                 THEN L.CollectionStatus
-        WHEN H.CollectionHealthStatus = ''STALE''
-
-    THEN ''STALE''
 
             WHEN L.CaptureDateUTC >
                  DATEADD
@@ -953,7 +953,18 @@ WHEN C.CollectorCode IN (''COL-09'', ''COL-15'')
 
         S.SampleKind,
 
-        S.InsertedDateUTC
+        S.InsertedDateUTC,
+
+        CASE
+            WHEN S.SampleKind = ''DELTA'' THEN
+                CASE S.MetricUnit
+                    WHEN ''CumulativeCount'' THEN ''Count''
+                    WHEN ''CumulativeMilliseconds'' THEN ''Milliseconds''
+                    WHEN ''CumulativeBytes'' THEN ''Bytes''
+                    ELSE S.MetricUnit
+                END
+            ELSE S.MetricUnit
+        END AS ReportingMetricUnit
 
     FROM dbo.MetricSamples AS S
 
@@ -1224,7 +1235,18 @@ WHEN C.CollectorCode IN (''COL-09'', ''COL-15'')
 
         A.LastCaptureDateUTC,
 
-        A.AggregatedDateUTC
+        A.AggregatedDateUTC,
+
+        CASE
+            WHEN A.AggregationType = ''DELTA'' THEN
+                CASE A.MetricUnit
+                    WHEN ''CumulativeCount'' THEN ''Count''
+                    WHEN ''CumulativeMilliseconds'' THEN ''Milliseconds''
+                    WHEN ''CumulativeBytes'' THEN ''Bytes''
+                    ELSE A.MetricUnit
+                END
+            ELSE A.MetricUnit
+        END AS ReportingMetricUnit
 
     FROM dbo.MetricHourlyAggregates AS A
 
