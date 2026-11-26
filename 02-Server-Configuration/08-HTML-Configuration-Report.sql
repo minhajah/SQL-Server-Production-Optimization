@@ -16,7 +16,8 @@ SET NOCOUNT ON;
 -- SECTION 1: Pre-execution Validation
 ------------------------------------------------------------
 -- Target: SQL Server 2017 or later, Windows Database Engine.
--- Conservative pilot requirement: an existing sysadmin DBA session.
+-- Read-only report: require performance DMV visibility, not sysadmin.
+-- Security checks may be incomplete under restricted metadata visibility.
 -- Do not grant additional privileges solely to run this report.
 IF ISNULL(TRY_CONVERT(int, SERVERPROPERTY('ProductMajorVersion')), 0) < 14
     THROW 50001, 'This report requires SQL Server 2017 or later.', 1;
@@ -24,8 +25,17 @@ IF ISNULL(TRY_CONVERT(int, SERVERPROPERTY('ProductMajorVersion')), 0) < 14
 IF ISNULL(CONVERT(int, SERVERPROPERTY('EngineEdition')), 0) NOT IN (2, 3, 4)
     THROW 50002, 'This report targets SQL Server Database Engine, not Azure SQL or other engines.', 1;
 
-IF ISNULL(IS_SRVROLEMEMBER('sysadmin'), 0) <> 1
-    THROW 50003, 'Pilot report requires an existing sysadmin session for complete metadata visibility.', 1;
+DECLARE @MajorVersion int = TRY_CONVERT(int, SERVERPROPERTY('ProductMajorVersion'));
+DECLARE @IsSysadmin bit = CASE WHEN IS_SRVROLEMEMBER('sysadmin') = 1 THEN 1 ELSE 0 END;
+
+IF DB_NAME() <> N'master'
+    THROW 50005, 'Execute this report in master.', 1;
+
+IF @MajorVersion < 16 AND ISNULL(HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE'), 0) <> 1
+    THROW 50003, 'Report requires VIEW SERVER STATE on SQL Server 2017/2019.', 1;
+
+IF @MajorVersion >= 16 AND ISNULL(HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER PERFORMANCE STATE'), 0) <> 1
+    THROW 50003, 'Report requires VIEW SERVER PERFORMANCE STATE on SQL Server 2022 or later.', 1;
 
 BEGIN TRY
 
@@ -257,21 +267,19 @@ INSERT @Findings VALUES
 ('SEC-002',
     'Security',
     'TRUSTWORTHY Databases',
-    CONVERT(nvarchar(30),
-    @Trust),
+    CONCAT(@Trust, CASE WHEN @IsSysadmin=0 THEN ' (visible databases only)' ELSE '' END),
     'Disabled unless justified',
     CASE WHEN @Trust>0 THEN 'HIGH' ELSE 'INFO' END,
-    CASE WHEN @Trust>0 THEN 'REVIEW' ELSE 'PASS' END,
+    CASE WHEN @Trust>0 THEN 'REVIEW' WHEN @IsSysadmin=0 THEN 'UNKNOWN' ELSE 'PASS' END,
     'Review databases using TRUSTWORTHY.'),
     
 ('SEC-003',
     'Security',
     'Database Ownership Chaining',
-    CONVERT(nvarchar(30),
-    @Chain),
+    CONCAT(@Chain, CASE WHEN @IsSysadmin=0 THEN ' (visible databases only)' ELSE '' END),
     'Disabled unless justified',
     CASE WHEN @Chain>0 THEN 'HIGH' ELSE 'INFO' END,
-    CASE WHEN @Chain>0 THEN 'REVIEW' ELSE 'PASS' END,
+    CASE WHEN @Chain>0 THEN 'REVIEW' WHEN @IsSysadmin=0 THEN 'UNKNOWN' ELSE 'PASS' END,
     'Validate cross-database security dependencies.'),
     
 ('SEC-004',
@@ -353,7 +361,13 @@ INSERT @Findings SELECT CASE name WHEN 'max worker threads' THEN 'ADV-006' WHEN 
 -- SECTION 10: Instant File Initialization
 ------------------------------------------------------------
 
-SELECT @IFI=instant_file_initialization_enabled FROM sys.dm_server_services WHERE process_id=CONVERT(int,SERVERPROPERTY('ProcessID'));
+-- Service metadata has a separate permission requirement on SQL Server 2022+.
+IF @MajorVersion < 16 OR ISNULL(HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER SECURITY STATE'), 0) = 1
+BEGIN
+    SELECT @IFI=instant_file_initialization_enabled
+    FROM sys.dm_server_services
+    WHERE process_id=CONVERT(int,SERVERPROPERTY('ProcessID'));
+END;
 INSERT @Findings VALUES ('ADV-010',
     'Advanced Configuration',
     'Instant File Initialization',
@@ -694,7 +708,7 @@ SET @HTML=CONCAT(CAST(N'<!DOCTYPE html>
 </tr>
 </table>
 <h2>07. Production Safety &amp; Limitations</h2>
-<p>No permanent objects, configuration changes or email delivery. Selected checks only; point-in-time observations and metadata visibility limitations apply. SQL Server 2017+ Windows pilot; existing sysadmin session required. Compare findings with Script 07; small unknown-data handling improvements may affect counts. The 25% plan cache threshold is an internal review guideline. This is not a complete health or security assessment.</p>
+<p>No permanent objects, configuration changes or email delivery. Selected checks only; point-in-time observations and metadata visibility limitations apply. SQL Server 2017+ Windows pilot; performance DMV permissions required. Restricted metadata may leave security checks UNKNOWN, including service information and database security coverage. Visible database counts are not proof of complete coverage. Compare findings with Script 07; small unknown-data handling improvements may affect counts. The 25% plan cache threshold is an internal review guideline. This is not a complete health or security assessment.</p>
 <div class="footer">SQL Server Production Optimization Framework<br>Module 02 - SQL Server Configuration Assessment</div>
 </body>
 </html>');
