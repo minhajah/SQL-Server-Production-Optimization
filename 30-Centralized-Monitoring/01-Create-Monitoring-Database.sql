@@ -6,14 +6,17 @@ Script  : 01-Create-Monitoring-Database.sql
 Purpose : Create centralized monitoring database
 Type    : Central Repository Deployment
 Impact  : Creates a new database on monitoring server only
-Version : 1.0
+Version : 1.1
 ============================================================
 
 IMPORTANT:
 
 1. Execute ONLY on the approved central monitoring instance.
 2. Do NOT execute on monitored production instances.
-3. Existing databases will not be modified.
+3. Existing databases are not modified by default. Explicit recovery
+   is restricted to an empty, standalone monitoring database.
+   Stop deployment/monitoring and independently confirm database ownership
+   before enabling recovery. The lock only serializes cooperating scripts.
 4. Existing inventory application will remain unchanged.
 5. Replace the approved server name before deployment.
 
@@ -38,6 +41,16 @@ DECLARE
     @ActualServer NVARCHAR(128),
 
     @AllowDeployment BIT = 0,
+
+    @AllowResumeIncompleteDeployment BIT = 0,
+
+    @ExistingDatabase BIT = 0,
+
+    @ConfigurationMatches BIT = 0,
+
+    @HasUserObjects BIT = 0,
+
+    @LockResult INT,
 
     @ProductMajorVersion INT,
 
@@ -135,22 +148,89 @@ END;
 -- SECTION 3: Existing Database Validation
 ------------------------------------------------------------
 
+-- Serialize cooperating deployment sessions on the central instance.
+EXEC @LockResult = sys.sp_getapplock
+    @Resource = N'DBA_Monitoring.DatabaseDeployment',
+    @LockMode = 'Exclusive',
+    @LockOwner = 'Session',
+    @LockTimeout = 5000,
+    @DbPrincipal = 'public';
+
+IF @LockResult < 0 OR @LockResult IS NULL
+    THROW 50010, 'Unable to acquire database deployment lock.', 1;
+
+BEGIN TRY
+
 IF DB_ID(@DatabaseName) IS NOT NULL
 BEGIN
+    SET @ExistingDatabase = 1;
 
-    SELECT
-        @ActualServer AS ServerName,
-        @DatabaseName AS DatabaseName,
-        'ALREADY EXISTS' AS DeploymentStatus,
-        'No database changes performed.' AS Details;
+    IF EXISTS
+    (
+        SELECT 1 FROM sys.databases
+        WHERE name = @DatabaseName
+          AND recovery_model_desc = 'SIMPLE'
+          AND compatibility_level = 150
+          AND is_auto_close_on = 0
+          AND is_auto_shrink_on = 0
+          AND is_auto_create_stats_on = 1
+          AND is_auto_update_stats_on = 1
+          AND page_verify_option_desc = 'CHECKSUM'
+          AND is_trustworthy_on = 0
+          AND is_db_chaining_on = 0
+    )
+        SET @ConfigurationMatches = 1;
 
-    RETURN;
+    IF @ConfigurationMatches = 0
+    BEGIN
+        IF ISNULL(@AllowResumeIncompleteDeployment, 0) <> 1
+            THROW 50011, 'Existing database settings differ. Review manually before authorizing recovery.', 1;
 
+        IF NOT EXISTS
+        (
+            SELECT 1 FROM sys.databases
+            WHERE name = @DatabaseName
+              AND state = 0 AND is_read_only = 0
+              AND user_access = 0 AND source_database_id IS NULL
+              AND replica_id IS NULL AND group_database_id IS NULL
+              AND is_published = 0 AND is_subscribed = 0
+              AND is_merge_published = 0 AND is_distributor = 0
+        ) OR EXISTS
+        (
+            SELECT 1 FROM sys.database_mirroring
+            WHERE database_id = DB_ID(@DatabaseName)
+              AND mirroring_guid IS NOT NULL
+        )
+            THROW 50012, 'Recovery requires an online, writable, standalone database.', 1;
+
+        -- Require the original logical file layout and full metadata visibility.
+        IF ISNULL(IS_SRVROLEMEMBER('sysadmin'), 0) <> 1
+            THROW 50013, 'Explicit recovery requires an authorized sysadmin session.', 1;
+
+        IF (SELECT COUNT(*) FROM sys.master_files WHERE database_id = DB_ID(@DatabaseName)) <> 2
+           OR NOT EXISTS (SELECT 1 FROM sys.master_files WHERE database_id = DB_ID(@DatabaseName) AND name = N'DBA_Monitoring_Data' AND type = 0)
+           OR NOT EXISTS (SELECT 1 FROM sys.master_files WHERE database_id = DB_ID(@DatabaseName) AND name = N'DBA_Monitoring_Log' AND type = 1)
+            THROW 50014, 'Existing database file layout does not match the deployment script.', 1;
+
+        EXEC sys.sp_executesql
+            N'USE [DBA_Monitoring];
+              SELECT @HasObjects = CASE WHEN EXISTS
+              (SELECT 1 FROM sys.objects WHERE is_ms_shipped = 0)
+              OR EXISTS (SELECT 1 FROM sys.types WHERE is_user_defined = 1)
+              THEN 1 ELSE 0 END;',
+            N'@HasObjects BIT OUTPUT', @HasObjects = @HasUserObjects OUTPUT;
+
+        IF ISNULL(@HasUserObjects, 1) = 1
+            THROW 50015, 'Repository objects already exist. Configuration changes require separate DBA review.', 1;
+    END;
 END;
 
 ------------------------------------------------------------
 -- SECTION 4: Database File Location
 ------------------------------------------------------------
+
+IF @ExistingDatabase = 0
+BEGIN
 
 SET @DataPath =
     CONVERT
@@ -196,8 +276,6 @@ SET @LogFile =
 -- SECTION 5: Create Monitoring Database
 ------------------------------------------------------------
 
-BEGIN TRY
-
     SET @SQL =
 
         N'CREATE DATABASE ' + QUOTENAME(@DatabaseName) +
@@ -227,11 +305,14 @@ BEGIN TRY
         );';
 
     EXEC sys.sp_executesql @SQL;
+END;
 
     --------------------------------------------------------
     -- SECTION 6: Database Configuration
     --------------------------------------------------------
 
+    IF @ConfigurationMatches = 0
+    BEGIN
     ALTER DATABASE [DBA_Monitoring]
         SET RECOVERY SIMPLE;
 
@@ -258,6 +339,7 @@ BEGIN TRY
 
     ALTER DATABASE [DBA_Monitoring]
         SET DB_CHAINING OFF;
+    END;
 
     --------------------------------------------------------
     -- SECTION 7: Deployment Confirmation
@@ -266,14 +348,20 @@ BEGIN TRY
     SELECT
         @ActualServer AS ServerName,
         @DatabaseName AS DatabaseName,
-        'SUCCESS' AS DeploymentStatus,
-        @DataFile AS DataFilePath,
-        @LogFile AS LogFilePath,
+        CASE WHEN @ExistingDatabase = 0 THEN 'SUCCESS'
+             WHEN @ConfigurationMatches = 1 THEN 'ALREADY CONFIGURED'
+             ELSE 'RECOVERY COMPLETED' END AS DeploymentStatus,
+        (SELECT physical_name FROM sys.master_files WHERE database_id = DB_ID(@DatabaseName) AND file_id = 1) AS DataFilePath,
+        (SELECT physical_name FROM sys.master_files WHERE database_id = DB_ID(@DatabaseName) AND name = N'DBA_Monitoring_Log') AS LogFilePath,
         SYSUTCDATETIME() AS DeploymentDateUTC;
+
+    EXEC sys.sp_releaseapplock @Resource = N'DBA_Monitoring.DatabaseDeployment', @LockOwner = 'Session', @DbPrincipal = 'public';
 
 END TRY
 
 BEGIN CATCH
+
+    EXEC sys.sp_releaseapplock @Resource = N'DBA_Monitoring.DatabaseDeployment', @LockOwner = 'Session', @DbPrincipal = 'public';
 
     SELECT
         @ActualServer AS ServerName,
