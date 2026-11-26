@@ -54,7 +54,12 @@ BEGIN
         1;
 END;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
 BEGIN
     THROW 50002,
@@ -107,6 +112,12 @@ IF @@TRANCOUNT <> 0
 BEGIN
     THROW 50007,
         'Execute deployment outside an existing transaction.',
+        1;
+END;
+IF (@@OPTIONS & 2) = 2
+BEGIN
+    THROW 50012,
+        'Implicit transactions must be disabled before deployment.',
         1;
 END;
 
@@ -390,6 +401,10 @@ BEGIN TRY
 
             @RunStatus VARCHAR(20),
 
+            @IngestedRowsReturned BIGINT,
+
+            @IngestedRowsStored BIGINT,
+
             @CurrentUTC DATETIME2(3),
 
             @SaveStatus VARCHAR(20);
@@ -453,10 +468,15 @@ BEGIN TRY
         ----------------------------------------------------
 
         SELECT
-            @RunStatus = RunStatus
+        SELECT
+    @RunStatus = RunStatus,
 
-        FROM dbo.CollectionRuns
-            WITH (UPDLOCK, HOLDLOCK)
+    @IngestedRowsReturned = RowsReturned,
+
+    @IngestedRowsStored = RowsStored
+
+FROM dbo.CollectionRuns
+    WITH (UPDLOCK, HOLDLOCK)
 
         WHERE CollectionRunID = @CollectionRunID
 
@@ -479,6 +499,19 @@ BEGIN TRY
                 ''Checkpoint requires an active collection run.'',
                 1;
         END;
+----------------------------------------------------
+-- Validate ingestion before advancing checkpoint
+----------------------------------------------------
+
+IF ISNULL(@IngestedRowsReturned, 0) <= 0
+OR @IngestedRowsStored IS NULL
+OR @IngestedRowsStored < 0
+OR @IngestedRowsStored > @IngestedRowsReturned
+BEGIN
+    THROW 50816,
+        ''Validated metric ingestion is required before saving a checkpoint.'',
+        1;
+END;
 
         IF NOT EXISTS
         (
@@ -817,6 +850,12 @@ BEGIN TRY
                 ''Checkpoint reset requires an independent transaction.'',
                 1;
         END;
+        IF (@@OPTIONS & 2) = 2
+BEGIN
+    THROW 50908,
+        ''Implicit transactions must be disabled before checkpoint reset.'',
+        1;
+END;
 
         BEGIN TRY
 
@@ -845,15 +884,16 @@ BEGIN TRY
             END;
 
             IF NOT EXISTS
-            (
-                SELECT 1
+(
+    SELECT 1
 
-                FROM dbo.MonitoringSettings
+    FROM dbo.MonitoringSettings
+        WITH (UPDLOCK, HOLDLOCK)
 
-                WHERE SettingKey = ''MonitoringEnabled''
+    WHERE SettingKey = ''MonitoringEnabled''
 
-                  AND SettingValue = N''0''
-            )
+      AND SettingValue = N''0''
+)
             BEGIN
                 THROW 50905,
                     ''Monitoring must be disabled before checkpoint reset.'',
