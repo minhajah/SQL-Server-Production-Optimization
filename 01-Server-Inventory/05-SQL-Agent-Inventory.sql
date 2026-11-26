@@ -163,6 +163,13 @@ ORDER BY RunningDuration_SEC DESC;
 -- SECTION 4: Failed Jobs in Last 24 Hours
 ------------------------------------------------------------
 
+-- SQL Agent history timestamps are in server-local time.
+DECLARE @Cutoff DATETIME = DATEADD(HOUR, -24, GETDATE());
+DECLARE @CutoffDate INT = CONVERT(INT, CONVERT(CHAR(8), @Cutoff, 112));
+DECLARE @CutoffTime INT = DATEPART(HOUR, @Cutoff) * 10000
+                       + DATEPART(MINUTE, @Cutoff) * 100
+                       + DATEPART(SECOND, @Cutoff);
+
 SELECT
     @@SERVERNAME AS ServerName,
     J.name AS JobName,
@@ -171,30 +178,60 @@ SELECT
         H.run_date, H.run_time)
         AS ExecutionDateTime,
 
-    H.step_id AS StepID,
-    H.step_name AS StepName,
-    H.sql_message_id AS SQLMessageID,
-    H.sql_severity AS SQLSeverity,
-    H.message AS ErrorMessage,
+    COALESCE(F.step_id, H.step_id) AS StepID,
+    COALESCE(F.step_name, H.step_name) AS StepName,
+    COALESCE(F.sql_message_id, H.sql_message_id) AS SQLMessageID,
+    COALESCE(F.sql_severity, H.sql_severity) AS SQLSeverity,
+    COALESCE(F.message, H.message) AS ErrorMessage,
 
     (H.run_duration / 10000) * 3600
     + ((H.run_duration % 10000) / 100) * 60
     + (H.run_duration % 100)
         AS RunDuration_SEC,
 
-    'Failed' AS ExecutionStatus
+    'Failed' AS ExecutionStatus,
+    H.message AS JobOutcomeMessage,
+    CASE WHEN F.instance_id IS NOT NULL
+         THEN 'Latest recorded failed step'
+         ELSE 'Job outcome only - no bounded failed step available'
+    END AS ErrorDetailSource
 
 FROM msdb.dbo.sysjobhistory AS H
 
 INNER JOIN msdb.dbo.sysjobs AS J
     ON H.job_id = J.job_id
 
+-- Locate the preceding job outcome to avoid mixing executions.
+OUTER APPLY
+(
+    SELECT TOP (1) P.instance_id
+    FROM msdb.dbo.sysjobhistory AS P
+    WHERE P.job_id = H.job_id
+      AND P.step_id = 0
+      AND P.instance_id < H.instance_id
+    ORDER BY P.instance_id DESC
+) AS P
+
+-- Do not attribute a step if the preceding outcome is missing:
+-- history may have been purged or this may be the first execution.
+OUTER APPLY
+(
+    SELECT TOP (1)
+        S.instance_id, S.step_id, S.step_name,
+        S.sql_message_id, S.sql_severity, S.message
+    FROM msdb.dbo.sysjobhistory AS S
+    WHERE S.job_id = H.job_id
+      AND S.step_id > 0
+      AND S.run_status = 0
+      AND S.instance_id > P.instance_id
+      AND S.instance_id < H.instance_id
+    ORDER BY S.instance_id DESC
+) AS F
+
 WHERE H.run_status = 0
-AND H.run_date > 0
 AND H.step_id = 0
-AND msdb.dbo.agent_datetime(
-        H.run_date, H.run_time)
-    >= DATEADD(HOUR, -24, GETDATE())
+AND H.run_date >= @CutoffDate
+AND (H.run_date > @CutoffDate OR H.run_time >= @CutoffTime)
 
 ORDER BY ExecutionDateTime DESC;
 
