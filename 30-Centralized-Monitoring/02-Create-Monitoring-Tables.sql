@@ -47,8 +47,8 @@ SET @ActualServer =
 -- SECTION 2: Deployment Safety Validation
 ------------------------------------------------------------
 
-IF @AllowDeployment <> 1
-BEGIN
+IF ISNULL(@AllowDeployment, 0) <> 1
+    BEGIN
 
     THROW 50001,
         'Deployment disabled. Review deployment parameters.',
@@ -56,7 +56,12 @@ BEGIN
 
 END;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
 BEGIN
 
@@ -455,6 +460,10 @@ BEGIN TRY
 
         CONSTRAINT UQ_MD_CollectorMetric
             UNIQUE (CollectorID, MetricID),
+
+        CONSTRAINT FK_MD_Collector
+            FOREIGN KEY (CollectorID)
+            REFERENCES dbo.Collectors (CollectorID),
 
         CONSTRAINT CK_MD_MetricBehavior
             CHECK
