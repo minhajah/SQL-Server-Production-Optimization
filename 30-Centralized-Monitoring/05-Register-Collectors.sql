@@ -56,8 +56,8 @@ SET @ActualServer =
 -- SECTION 2: Deployment Safety Validation
 ------------------------------------------------------------
 
-IF @AllowDeployment <> 1
-BEGIN
+IF ISNULL(@AllowDeployment, 0) <> 1
+    BEGIN
 
     THROW 50001,
         'Deployment disabled. Review deployment parameters.',
@@ -65,7 +65,12 @@ BEGIN
 
 END;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
 BEGIN
 
