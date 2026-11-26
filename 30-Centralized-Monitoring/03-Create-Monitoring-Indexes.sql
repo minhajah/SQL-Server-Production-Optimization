@@ -27,6 +27,15 @@ GO
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
+-- Required SET options for filtered indexes
+SET ANSI_NULLS ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET QUOTED_IDENTIFIER ON;
+SET NUMERIC_ROUNDABORT OFF;
+
 ------------------------------------------------------------
 -- SECTION 1: Deployment Configuration
 ------------------------------------------------------------
@@ -53,8 +62,8 @@ SET @ActualServer =
 -- SECTION 2: Deployment Safety Validation
 ------------------------------------------------------------
 
-IF @AllowDeployment <> 1
-BEGIN
+IF ISNULL(@AllowDeployment, 0) <> 1
+    BEGIN
 
     THROW 50001,
         'Deployment disabled. Review deployment parameters.',
@@ -62,7 +71,12 @@ BEGIN
 
 END;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
 BEGIN
 
