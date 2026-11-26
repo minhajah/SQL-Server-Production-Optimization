@@ -24,8 +24,8 @@ Collect -> Analyze -> Recommend -> Implement
 
 | Module | Description | Status |
 |---|---|---|
-| 01 | [Server Inventory & Discovery](01-Server-Inventory/) | Completed - Standalone Verified |
-| 02 | [Server Configuration](02-Server-Configuration/) | Completed - Standalone Verified |
+| 01 | [Server Inventory & Discovery](01-Server-Inventory/) | Developed - prior standalone verification; revised scripts pending retest |
+| 02 | [Server Configuration](02-Server-Configuration/) | Developed - prior standalone verification; revised scripts pending retest |
 | 03 | Database Configuration | Planned |
 | 04 | Backup and Recovery | Planned |
 | 05 | Database Integrity | Planned |
@@ -49,11 +49,11 @@ Collect -> Analyze -> Recommend -> Implement
 | 23 | Patching and Lifecycle | Planned |
 | 24 | Performance Baseline | Planned |
 | 25 | Final Assessment | Planned |
-| 26 | [Health Data Collection](26-Data-Collection/) | Development Completed - Validation Pending |
+| 26 | [Health Data Collection](26-Data-Collection/) | Development baseline - integration and validation pending |
 | 27 | Daily Health Report | Planned |
 | 28 | Weekly Performance Report | Planned |
 | 29 | Monthly Capacity Report | Planned |
-| 30 | [Centralized Monitoring](30-Centralized-Monitoring/) | Development Completed - Validation Pending |
+| 30 | [Centralized Monitoring](30-Centralized-Monitoring/) | Development baseline - integration and validation pending |
 | 31 | Automated Email Reporting | Planned |
 | 32 | Health Check Thresholds | Planned |
 | 33 | Improvement Tracking | Planned |
@@ -78,6 +78,12 @@ All modules must follow the approved framework design.
 ## Related Repository
 
 [SQL Server DBA Toolkit](https://github.com/minhajah/SQL-Server-DBA-Toolkit)
+
+## Current development baseline
+
+44 SQL scripts across modules 01, 02, 26 and 30 (8 + 8 + 16 + 12). The repository target is SQL Server 2019+ on Windows; other versions require separate validation. The independent offline Python runner is not yet implemented. Initial pilot candidates exclude COL-11, COL-12 and COL-16; all collectors remain disabled until approved tests pass. Retention and alerts remain disabled.
+
+Documentation baseline: uploaded repository snapshot (2), plus subsequently prepared replacement scripts. GitHub commit equivalence must be verified from a fresh snapshot. No new SQL Server execution or compilation evidence was obtained during consolidation.
 
 ## Disclaimer
 
