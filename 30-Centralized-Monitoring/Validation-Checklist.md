@@ -7,7 +7,7 @@
 | Project | SQL Server Production Optimization |
 | Module | 30 – Centralized Monitoring |
 | Database | DBA_Monitoring |
-| Schema Version | 1.0.6 |
+| Schema Version | 1.0.8 |
 | Document Version | 1.0 |
 | Initial Compatibility Target | SQL Server 2019 and later |
 | Initial Monitoring Scope | 25 SQL Server instances |
@@ -89,6 +89,8 @@ A validation item must not be marked as passed without supporting evidence.
 | 08-Historical-Metrics.sql | Pending | Pending | Pending | PENDING |
 | 09-Data-Retention.sql | Pending | Pending | Pending | PENDING |
 | 10-Monitoring-Views.sql | Pending | Pending | Pending | PENDING |
+| 11-Register-Metric-Definitions.sql | Pending | Pending | Pending | PENDING |
+| 12-Repository-Security.sql | Pending | Pending | Pending | PENDING |
 
 All scripts must be tested on an approved non-production SQL Server instance before production repository deployment.
 
@@ -305,7 +307,7 @@ Script: 04-Register-SQL-Instances.sql
 - [ ] Verify count, min, max, average, delta sum and units.
 - [ ] Exclude failed and event samples.
 - [ ] Verify first/last timestamps and duplicate hour handling.
-- [ ] Implement late-arrival reconciliation and test crossing-hour deltas.
+- [ ] Test 15-minute closing cutoff, rejected late batches, lock ordering and crossing-hour deltas.
 - [ ] Test maintenance locks, CPU, I/O and temporary storage.
 - [ ] Verify schema version 1.0.4.
 
@@ -321,7 +323,7 @@ Script: 04-Register-SQL-Instances.sql
 - [ ] Preserve latest state, latest metrics, baselines, checkpoints and deduplication.
 - [ ] Test batch and runtime bounds, delay and stop switches.
 - [ ] Test rollback and committed audit counts.
-- [ ] Implement persistent verified-hour cleanup tracking; test partial cleanup and late arrivals.
+- [ ] Test atomic verified-hour cleanup, interruption/rollback, large groups and late-arrival protection.
 - [ ] Test fairness, interrupted audit recovery and session lock release.
 - [ ] Measure log use and blocking; verify no shrink and schema 1.0.5.
 
@@ -334,7 +336,7 @@ Script: 04-Register-SQL-Instances.sql
 - [ ] Test stale, failed, overdue, missing and clock-skew observations.
 - [ ] Ensure completed transient resources are not shown as active.
 - [ ] Verify event and wait delta filters, bounded history and storage calculations.
-- [ ] Test reporting permissions and performance; verify schema 1.0.6.
+- [ ] Test reporting permissions and performance; verify reporting schema 1.0.6 and ReportingMetricUnit.
 
 ---
 
@@ -464,31 +466,7 @@ Script: 04-Register-SQL-Instances.sql
 
 ## 30. Known Technical Issues and Deployment Blockers
 
-| ID | Issue | Priority | Status |
-| --- | --- | --- | --- |
-| CM-001 | Complete metric definition catalog missing | Critical | OPEN |
-| CM-002 | SQL compilation and execution testing pending | Critical | OPEN |
-| CM-003 | Python integration pending | Critical | OPEN |
-| CM-004 | Atomic ingestion and checkpoint transaction enforcement | Critical | OPEN |
-| CM-005 | Persistent verified-hour retention tracking | Critical | OPEN |
-| CM-006 | Least-privilege permissions | High | OPEN |
-| CM-007 | Incremental XE rollover | High | OPEN |
-| CM-008 | Incremental error-log processing | High | OPEN |
-| CM-009 | SQL Agent history discontinuity | High | OPEN |
-| CM-010 | Counter epoch and reset detection | High | OPEN |
-| CM-011 | Event generation and deduplication | High | OPEN |
-| CM-012 | Late-arriving sample reconciliation | High | OPEN |
-| CM-013 | Transient resource lifecycle | High | OPEN |
-| CM-014 | Instance-wide connection failure circuit breaker | High | OPEN |
-| CM-015 | Capacity and overhead testing | High | OPEN |
-| CM-016 | Scheduling fairness | Medium | OPEN |
-| CM-017 | Existing object definition verification | Medium | OPEN |
-| CM-018 | Maintenance interruption recovery | High | OPEN |
-| CM-019 | Event registry growth policy | Medium | OPEN |
-| CM-020 | Threshold and incident classification | High | OPEN |
-| CM-021 | Failed database-context and deployment flag safety | High | OPEN |
-| CM-022 | High-volume wait statistics storage optimization | High | OPEN |
-All critical blockers must be resolved before production pilot. Other issues must be resolved or explicitly excluded from approved scope.
+The canonical issue IDs, status and acceptance criteria are maintained in [Technical-Review.md](Technical-Review.md). All applicable runtime tests and deployment gates remain pending; no issue is closed solely by a prepared patch.
 
 ---
 
@@ -541,3 +519,16 @@ Current module status: Development Completed – Validation Pending. No producti
 - [Repository Schema](Repository-Schema.md)
 - [Module 26](../26-Data-Collection/)
 - [Main Repository](../README.md)
+
+## Final integration acceptance additions
+
+Documentation baseline: uploaded repository snapshot (2), plus subsequently prepared replacement scripts. GitHub commit equivalence must be verified from a fresh snapshot. No new SQL Server execution or compilation evidence was obtained during consolidation.
+
+- [ ] Verify final committed snapshot matches all prepared replacements.
+- [ ] Test partial database deployment recovery, existing-object refusal and concurrent deployment.
+- [ ] Compile scripts 11 and 12 and verify schema 1.0.8, catalog output metadata, idempotency and effective permissions.
+- [ ] Reject wrong metric unit/category/resource and accept documented TMP-012 alternatives.
+- [ ] Test conflicting completion retries, rollback, partial checkpoint refusal and unknown commit outcomes.
+- [ ] Test transient freshness states and normalized delta reporting units.
+- [ ] Keep incremental collectors 11, 12 and 16 disabled until their acceptance criteria pass.
+- [ ] Verify offline installation, pinned dependencies, credentials and no production data in GitHub.

@@ -9,14 +9,14 @@
 | Source | SQL-Server-Production-Optimization-main (1).zip |
 | Review type | Targeted static source review |
 | Review date | 2026-11-25 |
-| Repository schema target | 1.0.6 |
+| Repository schema target | 1.0.8 |
 | Status | OPEN – validation pending |
 
 The archive integrity check passed. It contains 42 SQL files, including 16 Module 26 collectors and 10 Module 30 scripts. This review uses the uploaded SQL baseline, not a live GitHub revision. Documentation replacements reported by the maintainer do not alter the SQL baseline. No SQL was compiled, executed or deployed. Source line references below refer to the uploaded baseline and will change after corrections.
 
 ## 2. Defect register
 
-IDs below preserve the CM-001 through CM-010 mapping from the latest consolidated review; additional findings extend it. Earlier validation checklist IDs are a separate list, not a one-to-one mapping. Priority is a proposed engineering assessment. All items are OPEN.
+IDs below preserve the CM-001 through CM-010 mapping from the latest consolidated review; additional findings extend it. Earlier validation checklist IDs are a separate list, not a one-to-one mapping. Priority is a proposed engineering assessment. Original findings are preserved below for traceability; current status appears in section 6. No item is CLOSED.
 
 | ID | Priority | Source evidence | Required correction | Acceptance criterion |
 |---|---|---|---|---|
@@ -97,30 +97,47 @@ Work may be staged: unvalidated incremental collectors and retention remain disa
 
 | Issue | Changed files | Static review | Test evidence | Status |
 |---|---|---|---|---|
-| CM-001 | TBD | Pending | TBD | OPEN |
-| CM-002 | TBD | Pending | TBD | OPEN |
-| CM-003 | TBD | Pending | TBD | OPEN |
-| CM-004 | TBD | Pending | TBD | OPEN |
-| CM-005 | TBD | Pending | TBD | OPEN |
-| CM-006 | TBD | Pending | TBD | OPEN |
-| CM-007 | TBD | Pending | TBD | OPEN |
-| CM-008 | TBD | Pending | TBD | OPEN |
-| CM-009 | TBD | Pending | TBD | OPEN |
-| CM-010 | TBD | Pending | TBD | OPEN |
-| CM-011 | TBD | Pending | TBD | OPEN |
-| CM-012 | TBD | Pending | TBD | OPEN |
-| CM-013 | TBD | Pending | TBD | OPEN |
-| CM-014 | TBD | Pending | TBD | OPEN |
-| CM-015 | TBD | Pending | TBD | OPEN |
-| CM-016 | TBD | Pending | TBD | OPEN |
-| CM-017 | TBD | Pending | TBD | OPEN |
-| CM-018 | TBD | Pending | TBD | OPEN |
-| CM-019 | TBD | Pending | TBD | OPEN |
-| CM-020 | TBD | Pending | TBD | OPEN |
-| CM-021 | TBD | Pending | TBD | OPEN |
-| CM-022 | TBD | Pending | TBD | OPEN |
+| CM-001 | 30/11 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-002 | 30/09 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-003 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-004 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-005 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-006 | 30/10 (partial) | Patch present/prepared; final verification pending | Pending | PARTIAL |
+| CM-007 | 30/08,11 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-008 | 30/01–12 (partial) | Patch present/prepared; final verification pending | Pending | PARTIAL |
+| CM-009 | 30/10 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-010 | 30/12 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-011 | 30/02 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-012 | 30/06–08 (partial) | Patch present/prepared; final verification pending | Pending | PARTIAL |
+| CM-013 | 30/08 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-014 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-015 | 30/08–09 | Patch present/prepared; final verification pending | Pending | FIX PREPARED |
+| CM-016 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-017 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-018 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-019 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-020 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-021 | TBD | Pending | Pending | DEFERRED / OPEN |
+| CM-022 | TBD | Pending | Pending | DEFERRED / OPEN |
 
 Status progression: OPEN → FIX PREPARED → STATIC REVIEWED → TEST PASSED → CLOSED. Preparing a replacement file does not constitute a passed runtime test.
+
+## 6.1 Independent review additions (Claude; user-supplied)
+
+| ID | Finding | Disposition |
+|---|---|---|
+| IR-001 | Version floor | Document SQL 2019+ target; test older versions separately |
+| IR-002 | HTML report sysadmin requirement | M02/08 replacement prepared; permission test pending |
+| IR-003 | Collector lock protection | M26 all 16 replacements prepared; lock tests pending |
+| IR-004 | Transaction log database isolation | M26/10 replacement prepared; failure isolation tests pending |
+| IR-005 | Error-log overlap and privileges | Existing CM-005; deferred and disabled |
+| IR-006 | Failed job details and date predicate | M01/05 replacement prepared; correlation and performance tests pending |
+| IR-007 | Memory and TempDB heuristics | Document as workload-specific review guidelines |
+| IR-008 | Partial database deployment | M30/01 replacement prepared; recovery tests pending |
+| IR-009 | Stale documentation | Consolidated in this package; verify final commit |
+| IR-010 | External runner missing | CM-019; Python development pending |
+
+Documentation baseline: uploaded repository snapshot (2), plus subsequently prepared replacement scripts. GitHub commit equivalence must be verified from a fresh snapshot. No new SQL Server execution or compilation evidence was obtained during consolidation.
 
 ## 7. Deployment gates
 

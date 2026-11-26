@@ -7,7 +7,7 @@
 | Project | SQL Server Production Optimization |
 | Module | 30 – Centralized Monitoring |
 | Database | DBA_Monitoring |
-| Schema Version | 1.0.6 |
+| Schema Version | 1.0.8 |
 | Document Version | 1.0 |
 | Compatibility Target | SQL Server 2019 and later |
 | Development Status | Development Completed – Validation Pending |
@@ -660,13 +660,13 @@ All repository timestamps use UTC. CaptureDateUTC is source observation time; In
 ## 16. Proposed Permission Model
 
 | Role | Intended access |
-| --- | --- |
-| Administrator | Schema and configuration |
-| Monitoring service | Approved collection and ingestion |
-| Reporting user | Approved views |
-| Maintenance operator | Approved aggregation and retention |
-| Auditor | Approved audit history |
-Roles and grants are not yet implemented.
+|---|---|
+| MonitoringCollectorRole | Approved collection procedures, TVP and limited scheduling/connection metadata |
+| MonitoringReportingRole | Approved reporting views |
+| MonitoringMaintenanceRole | Approved aggregation and retention procedures and required DMV access |
+| MonitoringAdministratorRole | Approved recovery and checkpoint reset |
+
+Script 12 defines grants, not users or memberships. Validate effective permissions and inherited grants; remote collector rights are separate.
 
 ---
 
@@ -681,6 +681,8 @@ Roles and grants are not yet implemented.
 | 1.0.4 | 08-Historical-Metrics.sql |
 | 1.0.5 | 09-Data-Retention.sql |
 | 1.0.6 | 10-Monitoring-Views.sql |
+| 1.0.7 | 11-Register-Metric-Definitions.sql |
+| 1.0.8 | 12-Repository-Security.sql |
 
 
 ---
@@ -693,31 +695,7 @@ Measure instance and resource counts, metric frequency, retention, event volume,
 
 ## 19. Pending Technical Validation
 
-| ID | Issue | Priority |
-| --- | --- | --- |
-| CM-001 | Complete metric definition catalog missing | Critical |
-| CM-002 | SQL compilation and execution testing pending | Critical |
-| CM-003 | Python integration pending | Critical |
-| CM-004 | Atomic ingestion and checkpoint transaction enforcement | Critical |
-| CM-005 | Persistent verified-hour retention tracking | Critical |
-| CM-006 | Least-privilege permissions | High |
-| CM-007 | Incremental XE rollover | High |
-| CM-008 | Incremental error-log processing | High |
-| CM-009 | SQL Agent history discontinuity | High |
-| CM-010 | Counter epoch and reset detection | High |
-| CM-011 | Event generation and deduplication | High |
-| CM-012 | Late-arriving sample reconciliation | High |
-| CM-013 | Transient resource lifecycle | High |
-| CM-014 | Instance-wide connection failure circuit breaker | High |
-| CM-015 | Capacity and overhead testing | High |
-| CM-016 | Scheduling fairness | Medium |
-| CM-017 | Existing object definition verification | Medium |
-| CM-018 | Maintenance interruption recovery | High |
-| CM-019 | Event registry growth policy | Medium |
-| CM-020 | Threshold and incident classification | High |
-| CM-021 | Failed database-context and deployment flag safety | High |
-| CM-022 | High-volume wait statistics storage optimization | High |
-
+The canonical issue IDs, status and acceptance criteria are maintained in [Technical-Review.md](Technical-Review.md). All applicable runtime tests and deployment gates remain pending; no issue is closed solely by a prepared patch.
 
 ---
 
@@ -739,3 +717,9 @@ No repository DDL on monitored production instances; no automatic session termin
 ## 22. Conclusion
 
 The schema documents the intended development baseline, not an inspected deployed database. Consolidated testing, integration, security and performance validation remain mandatory.
+
+## Integration revision notes
+
+Documentation baseline: uploaded repository snapshot (2), plus subsequently prepared replacement scripts. GitHub commit equivalence must be verified from a fresh snapshot. No new SQL Server execution or compilation evidence was obtained during consolidation.
+
+MetricDefinitions references Collectors through FK_MD_Collector. Historical and hourly reporting add ReportingMetricUnit without replacing MetricUnit. The late-arrival policy rejects aggregate-eligible batches after hour end plus 15 minutes; shared/exclusive maintenance locks coordinate ingestion and maintenance. Atomic verified-hour cleanup replaces partial group deletion. These are prepared code changes, not proven runtime guarantees.

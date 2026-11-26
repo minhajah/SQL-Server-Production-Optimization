@@ -10,7 +10,7 @@ The framework is designed to operate independently of existing inventory applica
 
 **Development Status:** Development Completed – Validation Pending  
 **Repository Database:** DBA_Monitoring  
-**Schema Version:** 1.0.6  
+**Schema Version:** 1.0.8  
 **Initial Compatibility Target:** SQL Server 2019 and later
 
 ---
@@ -83,6 +83,8 @@ The Python collection service, reporting application and alerting engine are pla
 | [08-Historical-Metrics.sql](08-Historical-Metrics.sql) | Implements metric ingestion, cumulative counter processing, event deduplication and hourly aggregation. |
 | [09-Data-Retention.sql](09-Data-Retention.sql) | Implements configurable historical cleanup, aggregation verification and retention auditing. |
 | [10-Monitoring-Views.sql](10-Monitoring-Views.sql) | Creates centralized reporting views for monitoring, scheduling, data freshness and historical analysis. |
+| [11-Register-Metric-Definitions.sql](11-Register-Metric-Definitions.sql) | Registers metric catalog; runtime metadata verification pending. |
+| [12-Repository-Security.sql](12-Repository-Security.sql) | Defines four repository security roles; effective permissions pending. |
 
 ---
 
@@ -336,7 +338,7 @@ Deploy repository scripts only on the approved central instance. Stop monitoring
 2. Resolve critical defects
 3. Compile and execute in non-production
 4. Deploy repository and register test instances
-5. Register metric catalog
+5. Register metric catalog (11) and deploy repository roles (12); assign approved accounts separately
 6. Integrate Python service
 7. Validate ingestion, recovery, retention and permissions
 8. Benchmark workload
@@ -348,31 +350,7 @@ Deploy repository scripts only on the approved central instance. Stop monitoring
 
 ## 18. Known Limitations and Pending Validation
 
-| ID | Issue | Priority |
-| --- | --- | --- |
-| CM-001 | Complete metric definition catalog missing | Critical |
-| CM-002 | SQL compilation and execution testing pending | Critical |
-| CM-003 | Python integration pending | Critical |
-| CM-004 | Atomic ingestion and checkpoint transaction enforcement | Critical |
-| CM-005 | Persistent verified-hour retention tracking | Critical |
-| CM-006 | Least-privilege permissions | High |
-| CM-007 | Incremental XE rollover | High |
-| CM-008 | Incremental error-log processing | High |
-| CM-009 | SQL Agent history discontinuity | High |
-| CM-010 | Counter epoch and reset detection | High |
-| CM-011 | Event generation and deduplication | High |
-| CM-012 | Late-arriving sample reconciliation | High |
-| CM-013 | Transient resource lifecycle | High |
-| CM-014 | Instance-wide connection failure circuit breaker | High |
-| CM-015 | Capacity and overhead testing | High |
-| CM-016 | Scheduling fairness | Medium |
-| CM-017 | Existing object definition verification | Medium |
-| CM-018 | Maintenance interruption recovery | High |
-| CM-019 | Event registry growth policy | Medium |
-| CM-020 | Threshold and incident classification | High |
-| CM-021 | Failed database-context and deployment flag safety | High |
-| CM-022 | High-volume wait statistics storage optimization | High |
-All issues remain open pending evidence. No production-readiness guarantee is implied.
+The canonical issue IDs, status and acceptance criteria are maintained in [Technical-Review.md](Technical-Review.md). All applicable runtime tests and deployment gates remain pending; no issue is closed solely by a prepared patch.
 
 ---
 
@@ -403,14 +381,24 @@ All issues remain open pending evidence. No production-readiness guarantee is im
 | Table-valued input types | 1 |
 | Additional named nonclustered indexes | 16 |
 | Initial settings | 19 |
-| Schema version records | 7 |
+| Schema version records | 9 |
 | Collector definitions | 16 |
-10 initial SQL scripts prepared. Schema 1.0.6. Compilation, Python integration, performance testing and deployment pending.
+12 SQL scripts prepared. Schema target 1.0.8. Compilation, Python integration, performance testing and deployment pending.
 
 ---
 
 ## 21. Conclusion
 
-The central repository is an initial development baseline. Complete the technical review, metric catalog and integration before production use.
+The central repository is an initial development baseline. Complete the technical review, catalog metadata validation and integration before production use.
 
 [Return to Main Repository](../README.md)
+
+## Baseline integration decisions
+
+Documentation baseline: uploaded repository snapshot (2), plus subsequently prepared replacement scripts. GitHub commit equivalence must be verified from a fresh snapshot. No new SQL Server execution or compilation evidence was obtained during consolidation.
+
+- Ingestion validates metric units (TMP-012 exception), uses shared maintenance locking and rejects aggregate-eligible late batches after the 15-minute hour-closing cutoff.
+- Aggregation and retention use exclusive maintenance locks; verified hourly groups are deleted atomically and may exceed normal batch size. Retention stays disabled.
+- ReportingMetricUnit provides delta reporting units; freshness is separate from health severity.
+- Successful or partial ingestion, optional checkpoint and completion use one caller transaction. Partial runs must not advance checkpoints. Reconcile uncertain commits using the original run token.
+- Pilot excludes incremental collectors 11, 12 and 16 until coverage and replay are validated. The Python service is independent of the existing inventory application and must run offline.
