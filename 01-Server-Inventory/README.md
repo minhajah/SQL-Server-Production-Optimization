@@ -64,6 +64,10 @@ The HTML inventory report includes:
 3. Save the content as an HTML file using UTF-8.
 4. Open the file in a web browser.
 
+## Revision and compatibility notes
+
+Script 05 replacement improves failed-step diagnostics and integer date/time filtering. Retest job-history correlation and performance; prior standalone results do not cover the revised script.
+
 ## Validation Status
 
 | Environment | Status |
