@@ -89,6 +89,10 @@ The HTML report is independently executable and does not require the supporting 
 - Approved configuration exceptions require separate documentation.
 - Assessment findings do not constitute a complete security or health certification.
 
+## Revision and compatibility notes
+
+Script 08 replacement removes the mandatory sysadmin gate; SQL Server 2017/2019 requires VIEW SERVER STATE, SQL Server 2022+ requires VIEW SERVER PERFORMANCE STATE, with separate security metadata checks. Validate effective permissions and UNKNOWN results. Target SQL Server 2019+; SQL 2017 support for this report is a candidate only. Memory and TempDB heuristics are review guidelines, not automatic changes.
+
 ## Validation Status
 
 - Standalone SQL Server execution: Verified
@@ -101,6 +105,6 @@ The HTML report is independently executable and does not require the supporting 
 
 ## Module Status
 
-Completed – Standalone Verified
+Developed – prior standalone verification; revised script retest pending
 
 Part of the SQL Server Production Optimization Framework.
