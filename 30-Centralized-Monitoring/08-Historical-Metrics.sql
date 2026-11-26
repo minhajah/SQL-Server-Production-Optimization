@@ -50,7 +50,12 @@ SET @ActualServer =
 IF ISNULL(@AllowDeployment, 0) <> 1
     THROW 50001, 'Deployment disabled.', 1;
 
-IF @ApprovedMonitoringServer =
+IF NULLIF
+(
+    LTRIM(RTRIM(@ApprovedMonitoringServer)),
+    N''
+) IS NULL
+OR @ApprovedMonitoringServer =
     N'REPLACE_WITH_APPROVED_SERVER_NAME'
     THROW 50002, 'Approved server must be configured.', 1;
 
@@ -81,6 +86,10 @@ IF DATABASEPROPERTYEX
 
 IF @@TRANCOUNT <> 0
     THROW 50007, 'Existing transaction detected.', 1;
+IF (@@OPTIONS & 2) = 2
+    THROW 50012,
+        'Implicit transactions must be disabled.',
+        1;
 
 ------------------------------------------------------------
 -- SECTION 3: Repository Validation
@@ -722,12 +731,16 @@ BEGIN TRY
 
                AND D.MetricID = S.MetricID
 
-            WHERE D.MetricDefinitionID IS NULL
+           WHERE D.MetricDefinitionID IS NULL
+
+           OR S.Category <> D.Category
+
+           OR S.ResourceType <> D.ResourceType
         )
         BEGIN
 
             THROW 51010,
-                ''Unregistered metric definition detected.'',
+                ''Unregistered or incompatible metric definition detected.'',
                 1;
 
         END;
@@ -1417,7 +1430,42 @@ BEGIN TRY
                       L.CollectionRunID
               )
           );
+----------------------------------------------------
+-- Preserve delayed successful observations
+----------------------------------------------------
 
+UPDATE L
+
+SET LastSuccessfulCaptureUTC = S.CaptureDateUTC,
+
+    LastSuccessfulValue = S.MetricValue,
+
+    LastSuccessfulUnit = S.MetricUnit,
+
+    UpdatedDateUTC = @CurrentUTC
+
+FROM dbo.LatestMetrics AS L
+
+INNER JOIN #ResolvedSamples AS S
+
+    ON L.ResourceID = S.ResourceID
+
+   AND L.MetricDefinitionID =
+       S.MetricDefinitionID
+
+WHERE L.InstanceID = @InstanceID
+
+  AND S.StoragePolicy <> ''EVENT_ONLY''
+
+  AND S.CollectionStatus = ''SUCCESS''
+
+  AND
+  (
+      L.LastSuccessfulCaptureUTC IS NULL
+
+      OR S.CaptureDateUTC >
+         L.LastSuccessfulCaptureUTC
+  );
         ----------------------------------------------------
         -- Initialize new latest observations
         ----------------------------------------------------
@@ -1662,6 +1710,10 @@ BEGIN TRY
             THROW 51104,
                 ''Aggregation requires an independent transaction.'',
                 1;
+        IF (@@OPTIONS & 2) = 2
+    THROW 51107,
+        ''Implicit transactions must be disabled before aggregation.'',
+        1;
 
         BEGIN TRY
 
