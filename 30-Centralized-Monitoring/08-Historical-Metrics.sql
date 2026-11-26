@@ -549,6 +549,21 @@ BEGIN TRY
                 1;
 
         ----------------------------------------------------
+        -- Coordinate ingestion with aggregation and retention.
+        -- Shared locks permit concurrent ingestion across instances.
+        ----------------------------------------------------
+        EXEC @LockResult = sys.sp_getapplock
+            @Resource = N''DBA_Monitoring.HistoricalMaintenance'',
+            @LockMode = ''Shared'',
+            @LockOwner = ''Transaction'',
+            @LockTimeout = 5000;
+
+        IF @LockResult < 0
+            THROW 51013,
+                ''Unable to acquire historical ingestion lock.'',
+                1;
+
+        ----------------------------------------------------
         -- Validate current collection ownership
         ----------------------------------------------------
 
@@ -736,14 +751,65 @@ BEGIN TRY
            OR S.Category <> D.Category
 
            OR S.ResourceType <> D.ResourceType
+
+           OR
+           (
+               S.MetricUnit <> D.DefaultMetricUnit
+               AND NOT
+               (
+                   S.MetricID = ''TMP-012''
+                   AND D.DefaultMetricUnit = ''MB''
+                   AND S.MetricUnit = ''Percent''
+               )
+           )
         )
         BEGIN
 
             THROW 51010,
-                ''Unregistered or incompatible metric definition detected.'',
+                ''Unregistered metric or incompatible category, resource type or unit.'',
                 1;
 
         END;
+
+        ----------------------------------------------------
+        -- Close hourly input 15 minutes after the UTC hour ends.
+        -- Reject delayed aggregate-eligible observations before
+        -- updating resources, baselines, history or checkpoints.
+        -- Refresh time after obtaining the maintenance lock.
+        ----------------------------------------------------
+        SET @CurrentUTC = SYSUTCDATETIME();
+
+        IF EXISTS
+        (
+            SELECT 1
+            FROM @Samples AS S
+            INNER JOIN dbo.MetricDefinitions AS D
+                ON D.CollectorID = @CollectorID
+               AND D.MetricID = S.MetricID
+            WHERE D.IsEnabled = 1
+              AND S.CollectionStatus = ''SUCCESS''
+              AND
+              (
+                  (D.StoragePolicy = ''RAW''
+                   AND D.MetricBehavior = ''GAUGE'')
+                  OR D.StoragePolicy = ''DELTA''
+              )
+              AND
+              (
+                  DATEADD(HOUR, DATEDIFF(HOUR, CONVERT(DATETIME2(0), ''20000101''), S.CaptureDateUTC) + 1, CONVERT(DATETIME2(0), ''20000101''))
+                      <= DATEADD(MINUTE, -15, @CurrentUTC)
+                  OR EXISTS
+                  (
+                      SELECT 1
+                      FROM dbo.MetricHourlyAggregates AS A
+                      WHERE A.HourStartUTC = DATEADD(HOUR,
+                          DATEDIFF(HOUR, CONVERT(DATETIME2(0), ''20000101''), S.CaptureDateUTC), CONVERT(DATETIME2(0), ''20000101''))
+                  )
+              )
+        )
+            THROW 51014,
+                ''Aggregate-eligible observation belongs to a closed UTC hour; roll back and record failure.'',
+                1;
 
         ----------------------------------------------------
         -- Validate cumulative processing requirements
